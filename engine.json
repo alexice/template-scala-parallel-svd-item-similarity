@@ -1,0 +1,20 @@
+{
+  "id": "default",
+  "description": "Default settings",
+  "engineFactory": "org.template.SVDItemSimilarityEngine",
+  "datasource": {
+    "params" : {
+      "appName": "SVDApp1"
+    }
+  },
+  "algorithms": [
+    {
+      "name": "algo",
+      "params": {
+        "dimensions": 6,
+        "yearWeight": 2.0,
+        "durationWeight": 1.0
+      }
+    }
+  ]
+}
