@@ -20,4 +20,4 @@ list, director, producer and film duration in minutes are randomly generated
 for demo purposes.  
 
 For similarity measure cosine similarity is used. It's calculated on reduced 
-matrix obtained with SVD. 
+matrix obtained with SVD.

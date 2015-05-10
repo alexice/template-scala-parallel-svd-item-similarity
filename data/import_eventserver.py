@@ -8,8 +8,6 @@ import random
 import csv
 import re
 
-import json
-
 SEED = 12
 NUMSAMPLES = 1000
 
@@ -60,7 +58,6 @@ def import_events(client, data):
     
     for el in data[0:NUMSAMPLES]:
         count += 1
-        #print(json.dumps(el, indent=4, sort_keys=False))
         print("%d / %d" % (count, NUMSAMPLES))
         client.create_event(
             event="infoEntered",
