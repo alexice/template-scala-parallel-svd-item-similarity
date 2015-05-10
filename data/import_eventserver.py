@@ -11,6 +11,7 @@ import re
 import json
 
 SEED = 12
+NUMSAMPLES = 1000
 
 def prepare_data():
     random.seed(SEED)
@@ -57,10 +58,10 @@ def prepare_data():
 def import_events(client, data):
     count = 0
     
-    for el in data[0:1500]:
+    for el in data[0:NUMSAMPLES]:
         count += 1
         #print(json.dumps(el, indent=4, sort_keys=False))
-        print("%d / %d" % (count, len(data)))
+        print("%d / %d" % (count, NUMSAMPLES))
         client.create_event(
             event="infoEntered",
             entity_type="item",
