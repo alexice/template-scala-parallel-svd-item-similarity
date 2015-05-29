@@ -60,7 +60,7 @@ def import_events(client, data):
         count += 1
         print("%d / %d" % (count, NUMSAMPLES))
         client.create_event(
-            event="infoEntered",
+            event="$set",
             entity_type="item",
             entity_id=el["id"],
             properties=el)

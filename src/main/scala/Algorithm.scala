@@ -1,6 +1,7 @@
 package org.template
 
-import io.prediction.controller.{PersistentModelLoader, PersistentModel, P2LAlgorithm, Params}
+import io.prediction.controller.{P2LAlgorithm, Params}
+import io.prediction.data.storage.BiMap
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
@@ -13,6 +14,11 @@ import grizzled.slf4j.Logger
 
 import scala.reflect.ClassTag
 
+class Model(val itemIds: BiMap[String, Int], val V: DenseMatrix, val ssVt:
+DenseMatrix) extends Serializable {
+  override def toString = s"Items: ${itemIds.size}"
+}
+
 case class AlgorithmParams(dimensions: Int, yearWeight: Double,
                            durationWeight: Double) extends Params
 
@@ -24,9 +30,7 @@ class Algorithm(val ap: AlgorithmParams)
   @transient lazy val logger = Logger[this.type]
 
   private def encode(data: RDD[Array[String]]): RDD[Vector] = {
-    // Make category dictionary
-    val dict = data.flatMap(x => x).distinct().zipWithIndex().collect().
-      map(x => x._1 -> x._2).toMap
+    val dict = BiMap.stringLong(data.flatMap(x => x))
     val len = dict.size
 
     data.map { sample =>
@@ -38,8 +42,7 @@ class Algorithm(val ap: AlgorithmParams)
   // [X: ClassTag] - trick to have multiple definitions of encode, they both
   // for RDD[_]
   private def encode[X: ClassTag](data: RDD[String]): RDD[Vector] = {
-    val dict = data.distinct().zipWithIndex().collect().map(x => x._1 -> x
-      ._2).toMap
+    val dict = BiMap.stringLong(data)
     val len = dict.size
 
     data.map { sample =>
@@ -60,40 +63,18 @@ class Algorithm(val ap: AlgorithmParams)
     }
   }
 
-  def train(sc: SparkContext, data: PreparedData): Model = {
-    val itemIds = data.itemData.map(_.item).collect()
 
-    // Encode categorical vars
-    // We use here one-hot encoding
-    val categorical = Seq(encode(data.itemData.map(_.director)),
-      encode(data.itemData.map(_.producer)),
-      encode(data.itemData.map(_.genres)),
-      encode(data.itemData.map(_.actors)))
+  private def transposeRDD(data: RDD[Vector]) = {
+    val len = data.count().toInt
 
-    // Transform numeric vars in this case categorical attributes are binary
-    // encoded. Numeric vars are scaled and additional weights are given to
-    // them. These weights should be selected from some a-priory information,
-    // i.e. one should check how important year or duration for model quality
-    // and then assign weights accordingly
-    val numericRow = data.itemData.map(x => Vectors.dense(x.year, x.duration))
-    val weights = Array(ap.yearWeight, ap.durationWeight)
-    val scaler = new StandardScaler(withMean = true,
-      withStd = true).fit(numericRow)
-    val numeric = numericRow.map(x => Vectors.dense(scaler.transform(x).
-      toArray.zip(weights).map { case (x, w) => x * w }))
-
-    // Now we merge all data and normalize vectors so that they have unit norm
-    // and their dot product would yield cosine between vectors
-    val normalizer = new Normalizer()
-    val allData = (categorical ++ Seq(numeric)).reduce(merge).map(x =>
-      normalizer.transform(x))
-
-    // Now we need to transpose RDD because SVD better works with ncol << nrow
-    // and it's often the case when number of binary attributes is much greater
-    // then the number of items
-    val byColumnAndRow = allData.zipWithIndex().flatMap {
-      case (rowVector, rowIndex) => rowVector.toArray.zipWithIndex.map {
-        case (number, columnIndex) => columnIndex -> (rowIndex, number)
+    val byColumnAndRow = data.zipWithIndex().flatMap {
+      case (rowVector, rowIndex) => { rowVector match {
+        case SparseVector(_, columnIndices, values) =>
+          values.zip(columnIndices)
+        case DenseVector(values) =>
+          values.zipWithIndex
+      }} map {
+        case(v, columnIndex) => columnIndex -> (rowIndex, v)
       }
     }
 
@@ -103,66 +84,124 @@ class Algorithm(val ap: AlgorithmParams)
       indexedRow =>
         val all = indexedRow.toArray.sortBy(_._1)
         val significant = all.filter(_._2 != 0)
-        Vectors.sparse(all.length, significant.map(_._1.toInt),
-          significant.map(_._2))
+        Vectors.sparse(len, significant.map(_._1.toInt), significant.map(_._2))
     }
 
-    val mat: RowMatrix = new RowMatrix(transposed)
+    transposed
+  }
+
+  def train(sc: SparkContext, data: PreparedData): Model = {
+    val itemIds = BiMap.stringInt(data.items.map(_._1))
+
+    /**
+     * Encode categorical vars
+     * We use here one-hot encoding
+     */
+
+    val categorical = Seq(encode(data.items.map(_._2.director)),
+      encode(data.items.map(_._2.producer)),
+      encode(data.items.map(_._2.genres)),
+      encode(data.items.map(_._2.actors)))
+
+    /**
+     * Transform numeric vars.
+     * In our case categorical attributes are binary encoded. Numeric vars are
+     * scaled and additional weights are given to them. These weights should be
+     * selected from some a-priory information, i.e. one should check how
+     * important year or duration for model quality and then assign weights
+     * accordingly
+     */
+
+    val numericRow = data.items.map(x => Vectors.dense(x._2.year, x._2
+      .duration))
+    val weights = Array(ap.yearWeight, ap.durationWeight)
+    val scaler = new StandardScaler(withMean = true,
+      withStd = true).fit(numericRow)
+    val numeric = numericRow.map(x => Vectors.dense(scaler.transform(x).
+      toArray.zip(weights).map { case (x, w) => x * w }))
+
+    /**
+     * Now we merge all data and normalize vectors so that they have unit norm
+     * and their dot product would yield cosine between vectors
+     */
+
+    val normalizer = new Normalizer()
+    val allData = (categorical ++ Seq(numeric)).reduce(merge).map(x =>
+      normalizer.transform(x))
+
+    /**
+     * Now we need to transpose RDD because SVD better works with ncol << nrow
+     * and it's often the case when number of binary attributes is much greater
+     * then the number of items. But in the case when the number of items is
+     * more than number of attributes it is better not to transpose. In such
+     * case U matrix should be used
+     */
+
+
+    val transposed = transposeRDD(allData)
+
+    val matT: RowMatrix = new RowMatrix(transposed)
 
     // Make SVD to reduce data dimensionality
-    val svd: SingularValueDecomposition[RowMatrix, Matrix] = mat.computeSVD(
+    val svdT: SingularValueDecomposition[RowMatrix, Matrix] = matT.computeSVD(
       ap.dimensions, computeU = false)
-    val V: DenseMatrix = new DenseMatrix(svd.V.numRows, svd.V.numCols,
-      svd.V.toArray)
+
+    val V: DenseMatrix = new DenseMatrix(svdT.V.numRows, svdT.V.numCols,
+      svdT.V.toArray)
+    val sT: Vector = svdT.s
+
+    // Precomputed matrices for calculating cosine distance between each item
+    val ssVt = Matrices.diag(Vectors.dense(sT.toArray.map(x => x * x))).
+      multiply(V.transpose)
+
+    new Model(itemIds, V, ssVt)
+
+    /*
+
+    // This is an alternative code for the case when data matrix is not
+    // transposed (when the number of items is much bigger then the number
+    // of binary attributes
+
+    val mat: RowMatrix = new RowMatrix(allData)
+
+    val svd: SingularValueDecomposition[RowMatrix, Matrix] = mat.computeSVD(
+      ap.dimensions, computeU = true)
     val s: Vector = svd.s
 
-    // Calculating cosine distance between each item
-    val tmp = Matrices.diag(Vectors.dense(s.toArray.map(x => x * x))).
-      multiply(V.transpose)
-    val cosines = V.multiply(tmp)
+    val U: DenseMatrix = new DenseMatrix(svd.U.numRows.toInt, svd.U.numCols
+      .toInt, svd.U.rows.flatMap(_.toArray).collect(), isTransposed = true)
 
-    val n = cosines.numCols
+    val ssUt = Matrices.diag(Vectors.dense(s.toArray.map(x => x * x))).
+      multiply(U.transpose)
 
+    new Model(itemIds, U, ssUt)
 
-//    for(i <- 0 until n) logger.info(cosines(i, 0))
-//    itemIds.foreach(v => logger.info(v))
+    */
 
-    new Model(itemIds, cosines)
   }
 
   def predict(model: Model, query: Query): PredictedResult = {
+    /**
+     * Here we compute similarity to group of items in very simple manner
+     * We just take top scored items for all query items
 
-    val col = model.itemIds.zipWithIndex.find(_._1 == query.item).map { x =>
-      val idx = x._2
-      for (j <- 0 until model.similarities.numCols)
-        yield model.similarities(idx, j)
-    }.getOrElse(Seq())
+     * It is possible to use other grouping functions instead of max
+     */
 
-    val result = col.zip(model.itemIds).filter(x => x._2 != query.item).
-      sortWith(_._1 > _._1).map(x => new ItemScore(x._2, x._1)).
-      toArray.take(query.num)
+    val result = query.items.flatMap { itemId =>
+      model.itemIds.get(itemId).map { j =>
+        val d = for(i <- 0 until model.ssVt.numRows) yield model.ssVt(i, j)
+        val col = model.V.multiply(new DenseVector(d.toArray))
+        for(k <- 0 until col.size) yield new ItemScore(model.itemIds.inverse
+          .getOrElse(k, default="NA"), col(k))
+      }.getOrElse(Seq())
+    }.groupBy {
+      case(ItemScore(itemId, _)) => itemId
+    }.map(_._2.max).filter {
+      case(ItemScore(itemId, _)) => !query.items.contains(itemId)
+    }.toArray.sorted.reverse.take(query.num)
 
-    if(result.isEmpty) logger.info(s"No prediction for item ${query.item}.")
+    if(result.isEmpty) logger.info(s"No prediction for items ${query.items}.")
     PredictedResult(result)
-  }
-}
-
-class Model(val itemIds: Array[String], val similarities: DenseMatrix)
-  extends PersistentModel[AlgorithmParams] {
-  override def toString = s"Items: ${itemIds.length}"
-  def save(id: String, params: AlgorithmParams, sc: SparkContext): Boolean = {
-    sc.parallelize(Seq(itemIds)).saveAsObjectFile(s"/tmp/${id}/itemIds")
-    sc.parallelize(Seq(similarities)).saveAsObjectFile(s"/tmp/${id}/similarities")
-
-    true
-  }
-}
-
-object Model extends PersistentModelLoader[AlgorithmParams, Model] {
-  def apply(id: String, params: AlgorithmParams, sc: Option[SparkContext]) = {
-    // We can reconstruct distances on load in principle...
-    new Model(
-      itemIds = sc.get.objectFile[Array[String]](s"/tmp/${id}/itemIds").first,
-      similarities = sc.get.objectFile[DenseMatrix](s"/tmp/${id}/similarities").first)
   }
 }

@@ -4,7 +4,6 @@ import io.prediction.controller.PDataSource
 import io.prediction.controller.EmptyEvaluationInfo
 import io.prediction.controller.EmptyActualResult
 import io.prediction.controller.Params
-import io.prediction.data.storage.Event
 import io.prediction.data.store.PEventStore
 
 import org.apache.spark.SparkContext
@@ -24,37 +23,42 @@ class DataSource(val dsp: DataSourceParams)
   override
   def readTraining(sc: SparkContext): TrainingData = {
 
-    // read all events of EVENT involving ENTITY_TYPE and TARGET_ENTITY_TYPE
-    val eventsRDD: RDD[Event] = PEventStore.find(
+    // create a RDD of (entityID, Item)
+    val itemsRDD: RDD[(String, Item)] = PEventStore.aggregateProperties(
       appName = dsp.appName,
-      entityType = Some("item"),
-      eventNames = Some(List("infoEntered")))(sc)
+      entityType = "item"
+    )(sc).map { case (entityId, properties) =>
+      val item = try {
+        val title: String = properties.get[String]("title")
+        val producer: String = properties.get[String]("producer")
+        val director: String = properties.get[String]("director")
+        val genres: Array[String] = properties.get[Array[String]]("genres")
+        val actors: Array[String] = properties.get[Array[String]]("actors")
+        val year: Int = properties.get[Int]("year")
+        val duration: Int = properties.get[Int]("duration")
 
-    val itemDataRDD: RDD[ItemInfo] = eventsRDD.map { event =>
-      val title: String = event.properties.get[String]("title")
-      val producer: String = event.properties.get[String]("producer")
-      val director: String = event.properties.get[String]("director")
-      val genres: Array[String] = event.properties.get[Array[String]]("genres")
-      val actors: Array[String] = event.properties.get[Array[String]]("actors")
-      val year: Int = event.properties.get[Int]("year")
-      val duration: Int = event.properties.get[Int]("duration")
-
-      ItemInfo(event.entityId, title, year, duration, genres, producer,
-        director, actors)
+        Item(entityId, title, year, duration, genres, producer, director,
+          actors)
+      } catch {
+        case e: Exception => {
+          logger.error(s"Failed to get properties ${properties} of" +
+            s" item ${entityId}. Exception: ${e}.")
+          throw e
+        }
+      }
+      (entityId, item)
     }.cache()
 
-    new TrainingData(itemDataRDD)
+    new TrainingData(items = itemsRDD)
   }
 }
 
-
-// Array should be array of words
-case class ItemInfo(item: String, title: String, year: Int, duration: Int,
+case class Item(item: String, title: String, year: Int, duration: Int,
                     genres: Array[String], producer: String, director:
                     String, actors: Array[String])
 
-class TrainingData(val itemData: RDD[ItemInfo]) extends Serializable {
+class TrainingData(val items: RDD[(String, Item)]) extends Serializable {
   override def toString = {
-    s"items: [${itemData.count()}] (${itemData.take(2).toList}...)"
+    s"items: [${items.count()}] (${items.take(2).toList}...)"
   }
 }
