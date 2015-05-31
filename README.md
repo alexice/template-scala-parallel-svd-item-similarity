@@ -6,12 +6,6 @@ encoded using one-hot encoder. Algorithm uses SVD in order to reduce data
 dimensionality. Cosine similarity is now implemented but can be easily 
 extended to other similarity measures.
 
-## Documentation
-
----
-title: Quick Start - SVD Item Similarity Engine Template
----
-
 ## Overview
 
 This template is a simple example of unsupervised learning algorithm 
@@ -40,8 +34,7 @@ take into consideration that the number of attributes and items can be very
 big, then such matrix can be very big as well and it can be computationally 
 difficult to calculate it, so dimensionality reduction should be used. In 
 this example Singular value decomposition 
-(https://spark.apache.org/docs/latest/mllib-dimensionality-reduction
-.html#singular-value-decomposition-svd) is used. So we need to save two 
+(https://spark.apache.org/docs/latest/mllib-dimensionality-reduction.html#singular-value-decomposition-svd) is used. So we need to save two 
 matrices of sive M x K, M is the number of items and K is the number of 
 dimentions we're going to use and this number should be chosen so that our 
 model could grasp the data (similarity between items) from one side and were 
