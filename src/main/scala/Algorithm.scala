@@ -20,7 +20,8 @@ class Model(val itemIds: BiMap[String, Int], val projection: DenseMatrix)
 }
 
 case class AlgorithmParams(dimensions: Int, yearWeight: Double,
-                           durationWeight: Double) extends Params
+                           durationWeight: Double, normalizeProjection:
+                           Boolean) extends Params
 
 
 class Algorithm(val ap: AlgorithmParams)
@@ -125,9 +126,8 @@ class Algorithm(val ap: AlgorithmParams)
      * and their dot product would yield cosine between vectors
      */
 
-    val normalizer = new Normalizer()
-    val allData = (categorical ++ Seq(numeric)).reduce(merge).map(x =>
-      normalizer.transform(x))
+    val normalizer = new Normalizer(p = 2.0)
+    val allData = normalizer.transform((categorical ++ Seq(numeric)).reduce(merge))
 
     /**
      * Now we need to transpose RDD because SVD better works with ncol << nrow
@@ -140,16 +140,16 @@ class Algorithm(val ap: AlgorithmParams)
 
     val transposed = transposeRDD(allData)
 
-    val matT: RowMatrix = new RowMatrix(transposed)
+    val mat: RowMatrix = new RowMatrix(transposed)
 
     // Make SVD to reduce data dimensionality
-    val svdT: SingularValueDecomposition[RowMatrix, Matrix] = matT.computeSVD(
+    val svd: SingularValueDecomposition[RowMatrix, Matrix] = mat.computeSVD(
       ap.dimensions, computeU = false)
 
-    val V: DenseMatrix = new DenseMatrix(svdT.V.numRows, svdT.V.numCols,
-      svdT.V.toArray)
+    val V: DenseMatrix = new DenseMatrix(svd.V.numRows, svd.V.numCols,
+      svd.V.toArray)
 
-    val projection = Matrices.diag(svdT.s).multiply(V.transpose)
+    val projection = Matrices.diag(svd.s).multiply(V.transpose)
 
 /*
     // This is an alternative code for the case when data matrix is not
@@ -166,8 +166,35 @@ class Algorithm(val ap: AlgorithmParams)
 
     val projection = Matrices.diag(svd.s).multiply(U.transpose)
 */
-    
-    new Model(itemIds, projection)
+
+    svd.s.toArray.zipWithIndex.foreach { case (x, y) =>
+      logger.info(s"Singular value #$y = $x") }
+
+    val maxRank = Seq(mat.numCols(), mat.numRows()).min
+    val total = svd.s.toArray.map(x => x * x).reduce(_ + _)
+    val worstLeft = svd.s.toArray.last * svd.s.toArray.last * (maxRank - svd.s.size)
+    val variabilityGrasped = 100 * total / (total + worstLeft)
+
+    logger.info(s"Worst case variability grasped: $variabilityGrasped%")
+
+    val res = if(ap.normalizeProjection) {
+      val sequentionalizedProjection = for (j <- 0 until projection.numCols)
+        yield Vectors.dense((for (i <- 0 until projection.numRows) yield
+        projection(i, j)).toArray)
+
+      val normalizedProjectionSeq = sequentionalizedProjection.map(x =>
+        normalizer.transform(x))
+
+      val normalizedProjection = new DenseMatrix(projection.numRows, projection
+        .numCols, normalizedProjectionSeq.flatMap(x => x.toArray).toArray)
+
+      new Model(itemIds, normalizedProjection)
+    } else {
+
+      new Model(itemIds, projection)
+    }
+
+    res
   }
 
   def predict(model: Model, query: Query): PredictedResult = {

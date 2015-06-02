@@ -45,12 +45,16 @@ for demo purposes.
 
 ## Engine parameters
 
-This example has three parameters to tune. The main is __dimensions__, this 
+This example has four parameters to tune. The main is __dimensions__, this 
 parameter should be less or equal to min(number of items, item vector 
 dimension) and represents dimensionality of the space we are projecting our 
 vectorized items. This parameter should be chosen so that our model could 
 grasp the data (similarity between items) from one side and were not very 
-excessive from the other side. 
+excessive from the other side. After training algorithm outputs top singular 
+values and the worst case estimation of captured variability of data. Worst 
+case estimation is obtained with supposition that all the left singular 
+values (which are not calculated) are equal to the smallest one, the closer 
+to 100% this value is the better. 
 
 The two other parameters are __yearWeight__ and __durationWeight__. They 
 represent weight of numeric attributes year and duration respectively. These 
@@ -59,6 +63,15 @@ better similarity between items. No unified recipe can be offered for
 selecting them, but some intuition can be used. As both year and duration are 
 scaled to zero mean and unit standard deviation their weights represent their
 relative importance to any other attribute.
+
+The last parameter is __normalizeProjection__ (true / false). SVD with 
+__dimensions__ < rank of item-attribute matrix is the approximation of 
+the original matrix, so all vectors will be projections of original vectors 
+into space with reduced dimensionality (__dimensions__). 
+In this case dot product of vectors will be less then the cosine of the angle 
+between them. To fix this it is good to normalize vectors after projection is
+done. It is not very necessary if singular values decay rate is high, in such
+case not much of information is lost due to projection. 
 
 ## Versions
 
