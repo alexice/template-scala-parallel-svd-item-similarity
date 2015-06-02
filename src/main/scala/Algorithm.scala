@@ -14,8 +14,8 @@ import grizzled.slf4j.Logger
 
 import scala.reflect.ClassTag
 
-class Model(val itemIds: BiMap[String, Int], val V: DenseMatrix, val ssVt:
-DenseMatrix) extends Serializable {
+class Model(val itemIds: BiMap[String, Int], val projection: DenseMatrix)
+  extends Serializable {
   override def toString = s"Items: ${itemIds.size}"
 }
 
@@ -148,16 +148,10 @@ class Algorithm(val ap: AlgorithmParams)
 
     val V: DenseMatrix = new DenseMatrix(svdT.V.numRows, svdT.V.numCols,
       svdT.V.toArray)
-    val sT: Vector = svdT.s
 
-    // Precomputed matrices for calculating cosine distance between each item
-    val ssVt = Matrices.diag(Vectors.dense(sT.toArray.map(x => x * x))).
-      multiply(V.transpose)
+    val projection = Matrices.diag(svdT.s).multiply(V.transpose)
 
-    new Model(itemIds, V, ssVt)
-
-    /*
-
+/*
     // This is an alternative code for the case when data matrix is not
     // transposed (when the number of items is much bigger then the number
     // of binary attributes
@@ -166,18 +160,14 @@ class Algorithm(val ap: AlgorithmParams)
 
     val svd: SingularValueDecomposition[RowMatrix, Matrix] = mat.computeSVD(
       ap.dimensions, computeU = true)
-    val s: Vector = svd.s
 
     val U: DenseMatrix = new DenseMatrix(svd.U.numRows.toInt, svd.U.numCols
       .toInt, svd.U.rows.flatMap(_.toArray).collect(), isTransposed = true)
 
-    val ssUt = Matrices.diag(Vectors.dense(s.toArray.map(x => x * x))).
-      multiply(U.transpose)
-
-    new Model(itemIds, U, ssUt)
-
-    */
-
+    val projection = Matrices.diag(svd.s).multiply(U.transpose)
+*/
+    
+    new Model(itemIds, projection)
   }
 
   def predict(model: Model, query: Query): PredictedResult = {
@@ -190,8 +180,8 @@ class Algorithm(val ap: AlgorithmParams)
 
     val result = query.items.flatMap { itemId =>
       model.itemIds.get(itemId).map { j =>
-        val d = for(i <- 0 until model.ssVt.numRows) yield model.ssVt(i, j)
-        val col = model.V.multiply(new DenseVector(d.toArray))
+        val d = for(i <- 0 until model.projection.numRows) yield model.projection(i, j)
+        val col = model.projection.transpose.multiply(new DenseVector(d.toArray))
         for(k <- 0 until col.size) yield new ItemScore(model.itemIds.inverse
           .getOrElse(k, default="NA"), col(k))
       }.getOrElse(Seq())
