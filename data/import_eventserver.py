@@ -64,7 +64,7 @@ def import_events(client, data):
             entity_type="item",
             entity_id=el["id"],
             properties=el)
-        
+
     print("%s events are imported." % count)
             
         

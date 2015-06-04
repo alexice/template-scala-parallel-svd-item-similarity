@@ -73,6 +73,37 @@ between them. To fix this it is good to normalize vectors after projection is
 done. It is not very necessary if singular values decay rate is high, in such
 case not much of information is lost due to projection. 
 
+## Output during train
+SVD is a technique to reduce data dimensionality, the idea is to describe in the
+first place the most considerable peculiarities and then gradually less and 
+less considerable. The importance of every dimension (__dimensions__ 
+parameter) is given by correspondent singular value, SVD algorithm works so 
+that highest value is found first, then next highest and so on. The sum of 
+squares of all singular values is equal to data variance, so the more 
+__dimensions__ you use and the higher their correspondent singular values the
+ more info about data the model preserves. 
+
+After training is done algorithm outputs singular values and worst case 
+estimation of grasped variability, the higher last tally is the better. It's 
+calculated in very simple manner -- in worst case all singular values left 
+are considered equal to smallest of calculated by algorithm (actually they 
+should be a little bit smaller even for completely random data, but this is 
+the best estimation we can have without additional assumptions), having this 
+we can calculate how much of variability in such worst case has our model 
+"described".
+
+If worst case estimation of grasped variability is low, then it's wise to 
+increase the number of __dimensions__. But from the other side the more 
+__dimensions__ you use the longer train and prediction will work. 
+
+It's good to consider last singular values in output too. If their decay rate
+is slow i.e. every next value is very close to previous meanwhile worst case 
+estimation of grasped variability is low, then the algorithm 
+can not find system in data and it can mean that attributes do not describe 
+similarity of items (you'll give such situation with random data, so this 
+hallmark is a sign of that algorithm can not distinguish your data from random).
+
+
 ## Versions
 
 ### v0.0.3
