@@ -106,11 +106,7 @@ hallmark is a sign of that algorithm can not distinguish your data from random).
 
 ## Versions
 
-### v0.0.3
-
-### v0.0.2
-
-### v0.0.1
+### v0.0.5
 
 ## Usage
 
