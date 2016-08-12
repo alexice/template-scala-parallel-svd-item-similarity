@@ -14,21 +14,21 @@ NUMSAMPLES = 1000
 def prepare_data():
     random.seed(SEED)
     res = []
-    with open("sample_actors.txt") as f:
+    with open("./sample_actors.txt") as f:
         actors = [actor for actor in f.read().split("\n") if actor != ""]
     f.close()
     
-    with open("sample_producers.txt") as f:
+    with open("./sample_producers.txt") as f:
         producers = [producer for producer in f.read().split("\n")
                      if producer != ""]
     f.close()
 
-    with open("sample_directors.txt") as f:
+    with open("./sample_directors.txt") as f:
         directors = [director for director in f.read().split("\n")
                      if director != ""]
     f.close()
     
-    with open("sample_movies.csv", "rb") as csvfile:
+    with open("./sample_movies.csv", "rb") as csvfile:
         reader = csv.reader(csvfile, delimiter=',')
         for row in reader:
             data = {}
