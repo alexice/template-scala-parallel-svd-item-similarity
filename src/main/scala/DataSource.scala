@@ -29,16 +29,15 @@ class DataSource(val dsp: DataSourceParams)
       entityType = "item"
     )(sc).map { case (entityId, properties) =>
       val item = try {
-        val title: String = properties.get[String]("title")
-        val producer: String = properties.get[String]("producer")
-        val director: String = properties.get[String]("director")
-        val genres: Array[String] = properties.get[Array[String]]("genres")
-        val actors: Array[String] = properties.get[Array[String]]("actors")
-        val year: Int = properties.get[Int]("year")
-        val duration: Int = properties.get[Int]("duration")
+        val unidadeDeMedidade: String = properties.get[String]("unidadeDeMedida")
+        val linhaDeProdutoDescricao: String = properties.get[String]("linhaDeProdutoDescricao")
+        val familiaDescricao: String = properties.get[String]("familiaDescricao")
+        val empresaDescricao: String = properties.get[String]("empresaDescricao")
+        val descricao: String = properties.get[String]("descricao")
 
-        Item(entityId, title, year, duration, genres, producer, director,
-          actors)
+
+        Item(entityId, unidadeDeMedidade, empresaDescricao, linhaDeProdutoDescricao, familiaDescricao,
+          descricao)
       } catch {
         case e: Exception => {
           logger.error(s"Failed to get properties ${properties} of" +
@@ -53,9 +52,8 @@ class DataSource(val dsp: DataSourceParams)
   }
 }
 
-case class Item(item: String, title: String, year: Int, duration: Int,
-                    genres: Array[String], producer: String, director:
-                    String, actors: Array[String])
+case class Item(item: String, unidadeDeMedida: String, linhaDeProdutoDescricao: String, familiaDescricao: String, empresaDescricao:
+                    String, descricao: String)
 
 class TrainingData(val items: RDD[(String, Item)]) extends Serializable {
   override def toString = {
