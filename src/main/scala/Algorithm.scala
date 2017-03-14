@@ -215,7 +215,7 @@ class Algorithm(val ap: AlgorithmParams)
     }.groupBy {
       case(ItemScore(itemId, _)) => itemId
     }.map(_._2.max).filter {
-      case(ItemScore(itemId, _)) => !query.items.contains(itemId)
+      case(ItemScore(itemId, _)) => !query.items.contains(itemId) && query.minItemID < itemId
     }.toArray.sorted.reverse.take(query.num)
 
     if(result.isEmpty) logger.info(s"No prediction for items ${query.items}.")
