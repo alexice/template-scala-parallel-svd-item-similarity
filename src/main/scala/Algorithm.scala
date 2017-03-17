@@ -1,7 +1,7 @@
 package org.template
 
-import io.prediction.controller.{P2LAlgorithm, Params}
-import io.prediction.data.storage.BiMap
+import org.apache.predictionio.controller.{P2LAlgorithm, Params}
+import org.apache.predictionio.data.storage.BiMap
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
@@ -215,7 +215,7 @@ class Algorithm(val ap: AlgorithmParams)
     }.groupBy {
       case(ItemScore(itemId, _)) => itemId
     }.map(_._2.max).filter {
-      case(ItemScore(itemId, _)) => !query.items.contains(itemId)
+      case(ItemScore(itemId, _)) => !query.items.contains(itemId) && query.minItemID < itemId
     }.toArray.sorted.reverse.take(query.num)
 
     if(result.isEmpty) logger.info(s"No prediction for items ${query.items}.")
