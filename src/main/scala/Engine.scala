@@ -1,7 +1,7 @@
 package org.template
 
-import io.prediction.controller.EngineFactory
-import io.prediction.controller.Engine
+import org.apache.predictionio.controller.EngineFactory
+import org.apache.predictionio.controller.Engine
 
 // Query most similar (top num) items to the given
 case class Query(items: Array[String], num: Int) extends Serializable
