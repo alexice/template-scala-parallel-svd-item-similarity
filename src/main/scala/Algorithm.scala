@@ -1,7 +1,7 @@
 package org.template
 
-import io.prediction.controller.{P2LAlgorithm, Params}
-import io.prediction.data.storage.BiMap
+import org.apache.predictionio.controller.{P2LAlgorithm, Params}
+import org.apache.predictionio.data.storage.BiMap
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
